@@ -14,8 +14,9 @@ function Home() {
     setIsCreating(true);
     try {
       const socket: Socket = io(SOCKET_URL, {
-        transports: ["websocket", "polling"],
+        transports: ["polling", "websocket"], // Try polling first, then upgrade to websocket
         timeout: 10000,
+        upgrade: true, // Allow upgrade to websocket
       });
 
       // Set up timeout
