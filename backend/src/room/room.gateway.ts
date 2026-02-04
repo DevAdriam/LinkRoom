@@ -18,16 +18,27 @@ import { v4 as uuidv4 } from 'uuid';
       // Allow requests with no origin
       if (!origin) return callback(null, true);
       
-      // Allow localhost and network IPs
+      // Allow localhost, network IPs, and production domains
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
       const allowedPatterns = [
-        /^http:\/\/localhost:3000$/,
-        /^http:\/\/127\.0\.0\.1:3000$/,
+        frontendUrl,
+        'http://localhost:3000',
+        'https://localhost:3000',
+        'http://127.0.0.1:3000',
+        'http://linkmeet.duckdns.org',
+        'https://linkmeet.duckdns.org',
         /^http:\/\/192\.168\.\d+\.\d+:3000$/,
         /^http:\/\/10\.\d+\.\d+\.\d+:3000$/,
         /^http:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+:3000$/,
+        /^https?:\/\/.*\.duckdns\.org$/, // Allow any duckdns.org subdomain
       ];
       
-      const isAllowed = allowedPatterns.some(pattern => pattern.test(origin));
+      const isAllowed = allowedPatterns.some(pattern => {
+        if (typeof pattern === 'string') {
+          return origin === pattern;
+        }
+        return pattern.test(origin);
+      });
       callback(null, isAllowed);
     },
     credentials: true,
