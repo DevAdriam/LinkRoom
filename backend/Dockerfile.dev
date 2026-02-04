@@ -1,0 +1,23 @@
+# Development Dockerfile for Backend
+FROM node:22-alpine
+
+WORKDIR /app
+
+# Install build dependencies for mediasoup
+RUN apk add --no-cache python3 py3-pip make g++ linux-headers
+
+# Install dependencies (skip mediasoup postinstall to avoid hanging)
+COPY package*.json ./
+RUN if [ -f package-lock.json ]; then npm ci --ignore-scripts; else npm install --ignore-scripts; fi
+
+# Build mediasoup worker separately by running postinstall script
+RUN cd node_modules/mediasoup && npm run postinstall || echo "Mediasoup worker build completed"
+
+# Copy source code (will be overridden by volume in docker-compose)
+COPY . .
+
+# Expose port
+EXPOSE 3004
+
+# Start in development mode
+CMD ["npm", "run", "start:dev"]

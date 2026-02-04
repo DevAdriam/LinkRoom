@@ -1,0 +1,52 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: video_call-backend:latest
+    container_name: video-call-backend
+    ports:
+      - "${BACKEND_PORT:-3004}:3004"
+    environment:
+      - NODE_ENV=production
+      - PORT=3004
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - ANNOUNCED_IP=${ANNOUNCED_IP:-0.0.0.0}
+    networks:
+      - video-call-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3004', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Use localhost for client-side (browser), not Docker service name
+        - REACT_APP_SOCKET_URL=${REACT_APP_SOCKET_URL:-http://localhost:3004}
+        - PUBLIC_URL=${PUBLIC_URL:-}
+    image: video_call-frontend:latest
+    container_name: video-call-frontend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - video-call-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  video-call-network:
+    driver: bridge
