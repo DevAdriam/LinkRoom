@@ -54,6 +54,31 @@ function Room() {
     }
 
     setRoomLink(`${window.location.origin}/room/${roomId}`);
+    
+    // Request permissions immediately when entering room
+    const requestPermissions = async () => {
+      try {
+        // Check if permissions are already granted by trying to enumerate devices
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const hasVideo = devices.some(device => device.kind === 'videoinput');
+        const hasAudio = devices.some(device => device.kind === 'audioinput');
+        
+        if (!hasVideo || !hasAudio) {
+          // Request permissions by trying to get user media (will prompt if not granted)
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true,
+          });
+          // Stop the stream immediately - we just wanted to trigger the permission prompt
+          stream.getTracks().forEach(track => track.stop());
+        }
+      } catch (error) {
+        // Permission denied or error - will be handled in joinRoom
+        console.log("Permission check:", error);
+      }
+    };
+    
+    requestPermissions();
     initializeRoom();
 
     return () => {
@@ -120,9 +145,18 @@ function Room() {
 
   const joinRoom = async (socket: Socket) => {
     try {
+      // Request permissions with explicit constraints
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: "user",
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
       });
 
       localStreamRef.current = stream;
@@ -139,9 +173,46 @@ function Room() {
         roomId,
         rtpCapabilities: null, // Will send after device loads
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error getting user media:", error);
-      alert("Failed to access camera/microphone. Please check permissions.");
+      
+      let errorMessage = "Failed to access camera/microphone. ";
+      
+      if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
+        errorMessage += "Please allow camera and microphone permissions in your browser settings and refresh the page.";
+      } else if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError") {
+        errorMessage += "No camera or microphone found. Please connect a device and refresh.";
+      } else if (error.name === "NotReadableError" || error.name === "TrackStartError") {
+        errorMessage += "Camera or microphone is being used by another application. Please close other apps and refresh.";
+      } else if (error.name === "OverconstrainedError" || error.name === "ConstraintNotSatisfiedError") {
+        errorMessage += "Your device doesn't support the required video/audio settings. Trying with basic settings...";
+        // Retry with basic constraints
+        try {
+          const basicStream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true,
+          });
+          localStreamRef.current = basicStream;
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = basicStream;
+          }
+          const tempDevice = new mediasoupClient.Device();
+          deviceRef.current = tempDevice;
+          socket.emit("joinRoom", {
+            roomId,
+            rtpCapabilities: null,
+          });
+          return; // Success with basic constraints
+        } catch (retryError) {
+          errorMessage += " Failed even with basic settings.";
+        }
+      } else {
+        errorMessage += `Error: ${error.message || error.name}`;
+      }
+      
+      alert(errorMessage);
+      // Optionally navigate back to home
+      // navigate('/');
     }
   };
 
